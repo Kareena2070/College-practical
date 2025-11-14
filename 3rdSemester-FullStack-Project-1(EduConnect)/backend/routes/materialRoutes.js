@@ -1,33 +1,35 @@
 import express from "express";
-import jwt from "jsonwebtoken";
+import multer from "multer";
+import protect from "../middleware/authMiddleware.js";
 import Material from "../models/Material.js";
 
 const router = express.Router();
 
-// Middleware for authentication
-const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token" });
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.id;
-    next();
-  } catch {
-    res.status(403).json({ message: "Invalid token" });
-  }
-};
+// Configure multer to store uploaded files
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/"); // backend/uploads folder
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+const upload = multer({ storage });
 
-// Upload material
-router.post("/upload", verifyToken, async (req, res) => {
+// Upload material with file
+router.post("/", protect, upload.single("file"), async (req, res) => {
   try {
-    const { title, subject, description, fileUrl } = req.body;
+    const { title, subject, description } = req.body;
+    const fileUrl = req.file.path; // multer gives file path
+
     const material = await Material.create({
       title,
       subject,
       description,
       fileUrl,
-      uploadedBy: req.userId
+      uploadedBy: req.user._id,
     });
+
     res.status(201).json(material);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -37,7 +39,7 @@ router.post("/upload", verifyToken, async (req, res) => {
 // Get all materials
 router.get("/", async (req, res) => {
   try {
-    const materials = await Material.find().populate("uploadedBy", "name");
+    const materials = await Material.find().populate("uploadedBy", "name email");
     res.json(materials);
   } catch (err) {
     res.status(500).json({ error: err.message });
